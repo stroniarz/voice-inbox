@@ -1,0 +1,69 @@
+poll_interval_seconds: 60
+digest_interval_seconds: 3600  # raz na godzinę
+
+language: pl  # pl | en — sterpuje wszystkimi tekstami (short forms, digest prompt)
+
+# ── LLM (provider-agnostic) ────────────────────────────────────────────
+# Opcje providera: anthropic | openai | openrouter | deepseek | ollama
+llm:
+  provider: anthropic
+  model: claude-haiku-4-5-20251001
+  api_key_env: ANTHROPIC_API_KEY
+  # base_url: ~  # opcjonalne override dla openrouter/ollama/self-hosted
+
+# Przykłady innych konfiguracji:
+#
+# OpenRouter (jeden klucz, wiele modeli):
+# llm:
+#   provider: openai
+#   model: anthropic/claude-haiku-4.5
+#   base_url: https://openrouter.ai/api/v1
+#   api_key_env: OPENROUTER_API_KEY
+#
+# Lokalna Gemma przez Ollama (0 zł):
+# llm:
+#   provider: ollama
+#   model: gemma3:27b
+#   api_key_env: ~
+#
+# DeepSeek:
+# llm:
+#   provider: deepseek
+#   model: deepseek-chat
+#   api_key_env: DEEPSEEK_API_KEY
+
+# ── TTS (provider-agnostic) ────────────────────────────────────────────
+# Opcje providera: say | elevenlabs | openai
+tts:
+  provider: say
+  voice: Samantha  # macOS say: Samantha/Ava/Alex (EN), Zosia/Krzysztof/Ewa (PL)
+  rate: 180
+
+# ElevenLabs (premium, polski brzmi naturalnie):
+# tts:
+#   provider: elevenlabs
+#   voice_id: <twój voice id z ElevenLabs>
+#   model: eleven_turbo_v2_5
+#   api_key_env: ELEVENLABS_API_KEY
+#
+# OpenAI TTS (~$12/mies, dobra jakość):
+# tts:
+#   provider: openai
+#   voice: nova  # alloy|echo|fable|onyx|nova|shimmer
+#   model: tts-1  # lub tts-1-hd
+#   api_key_env: OPENAI_API_KEY
+
+state:
+  db_path: ~/.voice-inbox/state.db
+
+sources:
+  linear:
+    enabled: true
+    api_key_env: LINEAR_API_KEY
+    team_keys: []
+
+  slack:
+    enabled: false
+    token_env: SLACK_USER_TOKEN
+    dms: true
+    mentions: true
