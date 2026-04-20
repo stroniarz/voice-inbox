@@ -234,6 +234,15 @@ tools/
 
 **Nowy TTS provider**: analogicznie w `voice_inbox/tts/`.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest
+```
+
+51 testów pokrywających DedupStore (migracja + query), AskHandler (context building), CCHandler (routing + cooldown + summary integration), TranscriptSummarizer (parsing + cache + SKIP), HTTP server (endpoints + static mount), config loading, SayTTS synthesize.
+
 ## Status
 
 MVP działający na Linear. W planach:
