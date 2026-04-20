@@ -137,6 +137,13 @@ python3 tools/install_cc_hooks.py --remove
 
 Tworzy `.bak` na wszelki wypadek.
 
+**Opcjonalnie: session summary (`summary_enabled: true`)** — przy Stop event voice-inbox czyta `transcript_path` z hooka, wyciąga prompty + tool mix + ostatnią wypowiedź agenta i robi 1-zdaniowe LLM podsumowanie:
+
+- Bez summary: "Claude Code, sesja w ircsklep zakończona"
+- Z summary: "Claude w ircsklep: dodał autentykację JWT i zrefaktorował middleware"
+
+Cache per session_id — nie podsumowuje tej samej sesji dwa razy. Kosztuje ~$0.001-0.005 za długą sesję na Claude Haiku (darmowo na Ollama).
+
 ## Ask endpoint (rozmowa, nie raport)
 
 Jeśli włączysz `ask.enabled: true` (wymaga `server.enabled: true`), dostajesz dwa dodatkowe endpointy HTTP:

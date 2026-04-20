@@ -14,7 +14,7 @@ from .tts import make_tts
 from .tts.worker import TTSWorker
 from .adapters.linear import LinearAdapter
 from .adapters.slack import SlackAdapter
-from .cc import CCHandler
+from .cc import CCHandler, TranscriptSummarizer
 from .ask import AskHandler
 from .server import make_app, serve_in_thread
 from .stt import make_stt
@@ -109,11 +109,18 @@ def run(config_path: Path) -> None:
     if cfg.server.enabled:
         cc_handler = None
         if cfg.cc.enabled:
+            transcript_summarizer = None
+            if cfg.cc.summary_enabled:
+                transcript_summarizer = TranscriptSummarizer(llm, language=cfg.language)
+                logging.info("CC transcript summarizer enabled (min=%ss)",
+                             cfg.cc.summary_min_duration_seconds)
             cc_handler = CCHandler(
                 store, tts_worker, language=cfg.language,
                 stop_min_duration_seconds=cfg.cc.stop_min_duration_seconds,
                 cooldown_seconds=cfg.cc.cooldown_seconds,
                 ignore_events=cfg.cc.ignore_events,
+                transcript_summarizer=transcript_summarizer,
+                summary_min_duration_seconds=cfg.cc.summary_min_duration_seconds,
             )
             logging.info("Claude Code adapter enabled (cooldown=%ss)",
                          cfg.cc.cooldown_seconds)

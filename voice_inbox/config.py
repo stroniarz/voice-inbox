@@ -23,6 +23,8 @@ class CCConfig:
     stop_min_duration_seconds: int = 30
     cooldown_seconds: int = 60
     ignore_events: tuple[str, ...] = ()
+    summary_enabled: bool = False
+    summary_min_duration_seconds: int = 60
 
 
 @dataclass
@@ -86,6 +88,8 @@ def load_config(path: Path) -> Config:
         stop_min_duration_seconds=int(cc_raw.get("stop_min_duration_seconds", 30)),
         cooldown_seconds=int(cc_raw.get("cooldown_seconds", 60)),
         ignore_events=tuple(cc_raw.get("ignore_events") or ()),
+        summary_enabled=bool(cc_raw.get("summary_enabled", False)),
+        summary_min_duration_seconds=int(cc_raw.get("summary_min_duration_seconds", 60)),
     )
 
     ask_raw = raw.get("ask") or {}

@@ -23,20 +23,29 @@ class CCHandler:
 
     Per-project cooldown prevents Stop spam when CC fires Stop frequently
     on short interactions.
+
+    If a transcript_summarizer is provided, Stop events of long-enough
+    sessions trigger a 1-sentence LLM summary of what the agent did
+    (replaces generic "session ended" announcement).
     """
 
     def __init__(self, store, tts_worker, language: str,
                  stop_min_duration_seconds: int = 30,
                  cooldown_seconds: int = 60,
-                 ignore_events: tuple[str, ...] = ()):
+                 ignore_events: tuple[str, ...] = (),
+                 transcript_summarizer=None,
+                 summary_min_duration_seconds: int = 60):
         self.store = store
         self.tts_worker = tts_worker
         self.language = language
         self.stop_min_duration = stop_min_duration_seconds
         self.cooldown = cooldown_seconds
         self.ignore_events = set(ignore_events)
+        self.transcript_summarizer = transcript_summarizer
+        self.summary_min_duration = summary_min_duration_seconds
         self._last_announce: dict[str, float] = {}
         self._session_start: dict[str, float] = {}
+        self._transcript_paths: dict[str, str] = {}
         self._lock = threading.Lock()
 
     def __call__(self, payload: dict) -> None:
@@ -48,13 +57,19 @@ class CCHandler:
         if not event or event in self.ignore_events:
             return
 
-        # Track session start (we see UserPromptSubmit / PreToolUse before Stop)
+        # Track session start + transcript path (we see UserPromptSubmit /
+        # PreToolUse before Stop)
         if event in ("UserPromptSubmit", "PreToolUse") and session_id:
             self._session_start.setdefault(session_id, time.time())
+            tpath = payload.get("transcript_path")
+            if tpath:
+                self._transcript_paths[session_id] = tpath
             return
 
         if event == "Stop":
-            short = self._handle_stop(project, session_id)
+            # Transcript path from Stop payload takes precedence if present
+            tpath = payload.get("transcript_path") or self._transcript_paths.pop(session_id, None)
+            short = self._handle_stop(project, session_id, tpath)
         elif event == "SubagentStop":
             short = t(self.language, "cc_subagent_stop", project=project)
         elif event == "Notification":
@@ -91,14 +106,30 @@ class CCHandler:
         logger.info("CC: enqueue (%s) %s", tag, short)
         self.tts_worker.enqueue(short, tag=tag)
 
-    def _handle_stop(self, project: str, session_id: str) -> str | None:
-        """Announce Stop; filter by duration if we tracked session start."""
+    def _handle_stop(self, project: str, session_id: str,
+                     transcript_path: str | None = None) -> str | None:
+        """Announce Stop; filter by duration; optionally summarize transcript."""
         with self._lock:
             start = self._session_start.pop(session_id, None)
+        duration = None
         if start is not None:
             duration = time.time() - start
             if duration < self.stop_min_duration:
                 return None
-            if duration > 300:
-                return t(self.language, "cc_long_done", project=project)
+
+        # Try LLM summary for long-enough sessions with transcript available
+        if (self.transcript_summarizer is not None
+                and transcript_path
+                and (duration is None or duration >= self.summary_min_duration)):
+            try:
+                summary = self.transcript_summarizer.summarize(
+                    transcript_path, project, session_id=session_id)
+                if summary:
+                    prefix = t(self.language, "cc_summary_prefix", project=project)
+                    return prefix + summary
+            except Exception as e:
+                logger.warning("CC transcript summary failed: %s", e)
+
+        if duration is not None and duration > 300:
+            return t(self.language, "cc_long_done", project=project)
         return t(self.language, "cc_stop", project=project)

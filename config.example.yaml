@@ -71,6 +71,11 @@ claude_code:
   stop_min_duration_seconds: 30  # Stop eventy krótszych sesji są ignorowane
   cooldown_seconds: 60  # minimum między ogłoszeniami tego samego typu w tym samym projekcie
   ignore_events: []  # np. ["SubagentStop"] żeby wyciszyć subagenty
+  # Opt-in: czytaj transcript_path przy Stop i rób 1-zdaniowe LLM podsumowanie
+  # ("Claude w ircsklep: dodał autentykację JWT") zamiast generic "sesja zakończona".
+  # Kosztuje ~$0.001-0.005 za długą sesję (Claude Haiku / darmowo dla Ollama).
+  summary_enabled: false
+  summary_min_duration_seconds: 60  # sesje krótsze generują generic announcement
 
 # ── Ask endpoint (pytasz tekstem "co słychać?", agent odpowiada z kontekstu) ──
 # Wymaga server.enabled=true. Endpoint: POST /ask {"q": "...", "project": "opcjonalnie"}

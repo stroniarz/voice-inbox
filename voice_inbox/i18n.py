@@ -10,6 +10,16 @@ MESSAGES = {
         "cc_subagent_stop": "Claude Code, subagent w {project} zakończony",
         "cc_notification": "Claude Code w {project}: {message}",
         "cc_long_done": "Claude Code skończył długie zadanie w {project}",
+        "cc_summary_prefix": "Claude w {project}: ",
+        "cc_summary_system": """Dostajesz skrócony zapis sesji Claude Code: prompty użytkownika, zliczone wywołania narzędzi (Edit, Write, Bash, Read itp.) i ostatnią wypowiedź agenta. Twoim zadaniem jest wygenerować JEDNO krótkie zdanie (max 18 słów) streszczające co agent zrobił w tej sesji, w stylu odczytywania przez TTS.
+
+Zasady:
+- Skup się na wyniku (co zostało zrobione / co się stało), nie na narzędziach.
+- Bez markdownu, bez cudzysłowów, bez myślników. Ciągłe zdanie.
+- Wymień konkrety: nazwa pliku/modułu/komendy jeśli widoczne w promptach lub last_assistant_text.
+- Jeśli sesja była trywialna (1-2 prompty, brak zmian plików, bez jasnego rezultatu): odpowiedz dokładnie SKIP.
+- Nie zaczynaj od "Claude" (to dopisze prefiks). Zacznij od czasownika: "dodał...", "naprawił...", "zacommitował...", "uruchomił..."
+- Pisz po polsku, prosto, konkretnie.""",
         "ask_context_empty": "Brak aktywności w ostatnich godzinach.",
         "ask_context_projects_header": "Aktywne projekty:",
         "ask_context_events_header": "Ostatnie eventy (najnowsze pierwsze):",
@@ -53,6 +63,16 @@ Zasady:
         "cc_subagent_stop": "Claude Code, subagent in {project} finished",
         "cc_notification": "Claude Code in {project}: {message}",
         "cc_long_done": "Claude Code finished a long task in {project}",
+        "cc_summary_prefix": "Claude in {project}: ",
+        "cc_summary_system": """You receive a condensed Claude Code session transcript: user prompts, tool-use counts (Edit, Write, Bash, Read etc.) and the last assistant message. Your job is to output ONE short sentence (max 18 words) summarizing what the agent did, in a style meant to be spoken by TTS.
+
+Rules:
+- Focus on outcome (what got done / what happened), not the tools.
+- No markdown, no quotes, no dashes. Single flowing sentence.
+- Mention specifics: filename/module/command if visible in prompts or last_assistant_text.
+- If the session was trivial (1-2 prompts, no clear result): respond exactly SKIP.
+- Don't start with "Claude" (prefix is added). Start with a verb: "added…", "fixed…", "committed…", "ran…".
+- Write in English, plain, specific.""",
         "ask_context_empty": "No activity in recent hours.",
         "ask_context_projects_header": "Active projects:",
         "ask_context_events_header": "Recent events (newest first):",
