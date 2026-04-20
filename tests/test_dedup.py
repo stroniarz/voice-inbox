@@ -71,6 +71,28 @@ def test_fetch_undigested(store):
     assert events2[0]["id"] == events[1]["id"]
 
 
+def test_fetch_undigested_includes_project(store):
+    """Regression: fetch_undigested must return 'project' for Summarizer to group by it."""
+    store.archive_event("linear", "a", "u", "s", "t", "b", project="STR")
+    store.archive_event("claude_code", "b", "u", "s", "t", "b", project="ircsklep")
+    store.archive_event("slack", "c", "u", "s", "t", "b")  # no project
+    events = store.fetch_undigested(since_minutes=60)
+    projects = {e["source"]: e["project"] for e in events}
+    assert projects == {"linear": "STR", "claude_code": "ircsklep", "slack": None}
+
+
+def test_project_summary_with_filter(store):
+    """project_summary(project='STR') returns only STR, not all projects."""
+    store.archive_event("linear", "a", "u", "s", "t", "b", project="STR")
+    store.archive_event("linear", "b", "u", "s", "t", "b", project="STR")
+    store.archive_event("claude_code", "c", "u", "s", "t", "b", project="IRC")
+    all_ = store.project_summary(hours=1)
+    filtered = store.project_summary(hours=1, project="STR")
+    assert len(all_) == 2  # STR + IRC groups
+    assert len(filtered) == 1
+    assert filtered[0]["project"] == "STR"
+
+
 def test_migration_idempotent(tmp_path):
     """DedupStore.__init__ runs multiple times without errors — migration is conditional."""
     from voice_inbox.dedup import DedupStore

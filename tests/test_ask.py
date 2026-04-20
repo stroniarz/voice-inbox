@@ -45,9 +45,25 @@ def test_ask_with_project_filter(store, mock_llm):
     h = AskHandler(mock_llm, store, "pl")
     h.ask("co w STR?", project="STR")
     _, user_content, _ = mock_llm.calls[0]
-    # Context should include STR but not IRC
+    # Context should include STR but not IRC — both in events AND projects summary
     assert "STR-1" in user_content
     assert "IRC-1" not in user_content
+
+
+def test_project_filter_also_filters_project_summary(store, mock_llm):
+    """Regression (codex P1): project_summary header must respect project filter,
+    not leak 'Active projects' of unrelated projects into LLM context."""
+    store.archive_event("linear", "a", "u", "STR event", "[STR-1]", "",
+                        project="STR")
+    store.archive_event("slack", "b", "u", "IRC mention", "#irc", "",
+                        project="#irc")
+    h = AskHandler(mock_llm, store, "pl")
+    ctx = h.build_context(project="STR")
+    assert "STR" in ctx
+    # The IRC project must not appear in the "Active projects" header when
+    # caller explicitly scoped to STR
+    assert "#irc" not in ctx
+    assert "slack" not in ctx
 
 
 def test_ask_handles_llm_exception(store):

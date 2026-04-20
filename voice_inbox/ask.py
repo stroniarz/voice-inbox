@@ -48,7 +48,10 @@ class AskHandler:
             project=project,
             limit=self.max_events,
         )
-        projects = self.store.project_summary(hours=self.history_hours)
+        projects = self.store.project_summary(
+            hours=self.history_hours,
+            project=project,
+        )
 
         if not events and not projects:
             return t(self.language, "ask_context_empty")

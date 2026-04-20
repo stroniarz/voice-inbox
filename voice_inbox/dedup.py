@@ -119,18 +119,22 @@ class DedupStore:
             for r in rows
         ]
 
-    def project_summary(self, hours: int = 24) -> list[dict]:
-        """Aggregated per-project activity for /status endpoint."""
+    def project_summary(self, hours: int = 24,
+                        project: str | None = None) -> list[dict]:
+        """Aggregated per-project activity for /status endpoint and /ask context."""
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        sql = (
+            "SELECT COALESCE(project, '(none)') AS p, source, "
+            "COUNT(*) AS cnt, MAX(created_at) AS last_at "
+            "FROM events WHERE created_at >= ?"
+        )
+        params: list = [cutoff]
+        if project is not None:
+            sql += " AND project = ?"
+            params.append(project)
+        sql += " GROUP BY p, source ORDER BY last_at DESC"
         with self.lock:
-            rows = self.conn.execute(
-                "SELECT COALESCE(project, '(none)') AS p, source, "
-                "COUNT(*) AS cnt, MAX(created_at) AS last_at "
-                "FROM events WHERE created_at >= ? "
-                "GROUP BY p, source "
-                "ORDER BY last_at DESC",
-                (cutoff,),
-            ).fetchall()
+            rows = self.conn.execute(sql, params).fetchall()
         return [
             {"project": r[0], "source": r[1], "count": r[2], "last_at": r[3]}
             for r in rows
@@ -140,14 +144,14 @@ class DedupStore:
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).isoformat()
         with self.lock:
             rows = self.conn.execute(
-                "SELECT id, source, author, short, title, body, created_at "
+                "SELECT id, source, author, short, title, body, created_at, project "
                 "FROM events WHERE digested_at IS NULL AND created_at >= ? "
                 "ORDER BY created_at ASC",
                 (cutoff,),
             ).fetchall()
         return [
             {"id": r[0], "source": r[1], "author": r[2], "short": r[3],
-             "title": r[4], "body": r[5], "created_at": r[6]}
+             "title": r[4], "body": r[5], "created_at": r[6], "project": r[7]}
             for r in rows
         ]
 
