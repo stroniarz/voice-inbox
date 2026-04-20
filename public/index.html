@@ -74,6 +74,7 @@
 <footer>
   <button id="ptt">Przytrzymaj</button>
 </footer>
+<audio id="player" playsinline preload="auto" style="display:none"></audio>
 <script>
 const ptt = document.getElementById('ptt');
 const log = document.getElementById('log');
@@ -81,11 +82,18 @@ const status = document.getElementById('status');
 const resetBtn = document.getElementById('reset-btn');
 const statusBtn = document.getElementById('status-btn');
 const projectSelect = document.getElementById('project-select');
+const player = document.getElementById('player');
+
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked) return;
+  try { player.src = SILENT_WAV; player.play().then(() => { audioUnlocked = true; }).catch(() => {}); } catch (_) {}
+}
 
 let mediaRecorder = null;
 let chunks = [];
 let stream = null;
-let currentAudio = null;
 
 function pickMime() {
   const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav'];
@@ -109,7 +117,8 @@ function addTurn(text, who) {
 
 async function start() {
   if (mediaRecorder && mediaRecorder.state === 'recording') return;
-  if (currentAudio) { try { currentAudio.pause(); } catch (_) {} }
+  unlockAudio();
+  try { player.pause(); } catch (_) {}
   try {
     await ensureStream();
     chunks = [];
@@ -150,8 +159,14 @@ async function onStop() {
     if (data.answer) addTurn(data.answer, 'bot');
     status.textContent = '';
     if (data.audio_b64 && data.mime) {
-      currentAudio = new Audio(`data:${data.mime};base64,${data.audio_b64}`);
-      await currentAudio.play().catch(() => {});
+      player.src = `data:${data.mime};base64,${data.audio_b64}`;
+      try {
+        await player.play();
+      } catch (err) {
+        status.textContent = 'Kliknij ekran żeby odblokować dźwięk';
+        const resume = () => { player.play().catch(() => {}); document.removeEventListener('click', resume); };
+        document.addEventListener('click', resume, { once: true });
+      }
     }
   } catch (e) {
     status.textContent = 'Błąd: ' + e.message;
