@@ -5,7 +5,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -17,10 +17,22 @@ class AskBody(BaseModel):
     project: str | None = None
 
 
+class ChannelRegisterBody(BaseModel):
+    project: str
+    cwd: str | None = None
+
+
+class ChannelPushBody(BaseModel):
+    project: str
+    text: str
+    meta: dict[str, str] | None = None
+
+
 def make_app(cc_handler=None, ask_handler=None, store=None,
              stt_client=None, tts_client=None,
              public_dir: Path | None = None,
-             stt_language: str = "pl") -> FastAPI:
+             stt_language: str = "pl",
+             channels_bridge=None) -> FastAPI:
     app = FastAPI(title="voice-inbox")
 
     @app.get("/health")
@@ -88,6 +100,36 @@ def make_app(cc_handler=None, ask_handler=None, store=None,
             "audio_b64": audio_b64,
             "mime": mime,
         }
+
+    @app.post("/channels/register")
+    async def channels_register(body: ChannelRegisterBody):
+        if channels_bridge is None:
+            return JSONResponse({"ok": False, "error": "channels disabled"}, status_code=503)
+        await channels_bridge.register(body.project, cwd=body.cwd)
+        return {"ok": True}
+
+    @app.post("/channels/push")
+    async def channels_push(body: ChannelPushBody):
+        if channels_bridge is None:
+            return JSONResponse({"ok": False, "error": "channels disabled"}, status_code=503)
+        ok = await channels_bridge.push(body.project, body.text, meta=body.meta)
+        return {"ok": ok}
+
+    @app.get("/channels/pull")
+    async def channels_pull(project: str, timeout: float = 30.0):
+        if channels_bridge is None:
+            return JSONResponse({"ok": False, "error": "channels disabled"}, status_code=503)
+        timeout = max(0.1, min(timeout, 60.0))
+        msg = await channels_bridge.pull(project, timeout=timeout)
+        if msg is None:
+            return Response(status_code=204)  # 204 must have no body per HTTP spec
+        return {"ok": True, "message": msg}
+
+    @app.get("/channels/active")
+    def channels_active():
+        if channels_bridge is None:
+            return JSONResponse({"ok": False, "error": "channels disabled"}, status_code=503)
+        return {"ok": True, "projects": channels_bridge.active_projects()}
 
     @app.get("/status")
     def status(hours: int = 24):

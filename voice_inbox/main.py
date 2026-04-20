@@ -16,6 +16,7 @@ from .adapters.linear import LinearAdapter
 from .adapters.slack import SlackAdapter
 from .cc import CCHandler, TranscriptSummarizer
 from .ask import AskHandler
+from .channels_bridge import ChannelsBridge
 from .server import make_app, serve_in_thread
 from .stt import make_stt
 
@@ -155,6 +156,9 @@ def run(config_path: Path) -> None:
 
         tts_for_voice = clients.get("default")
 
+        channels_bridge = ChannelsBridge()
+        logging.info("Channels bridge enabled (/channels/{register,push,pull,active})")
+
         app = make_app(
             cc_handler=cc_handler,
             ask_handler=ask_handler,
@@ -163,6 +167,7 @@ def run(config_path: Path) -> None:
             tts_client=tts_for_voice,
             public_dir=public_dir,
             stt_language=cfg.voice.language,
+            channels_bridge=channels_bridge,
         )
         serve_in_thread(app, cfg.server.host, cfg.server.port)
         logging.info("HTTP server: http://%s:%d", cfg.server.host, cfg.server.port)
