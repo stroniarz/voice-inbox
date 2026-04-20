@@ -157,7 +157,11 @@ def run(config_path: Path) -> None:
         tts_for_voice = clients.get("default")
 
         channels_bridge = ChannelsBridge()
-        logging.info("Channels bridge enabled (/channels/{register,push,pull,active})")
+        logging.info(
+            "Channels bridge enabled (/channels/{register,push,pull,active,reply}); "
+            "archive_replies=%s",
+            cfg.channels.archive_replies,
+        )
 
         app = make_app(
             cc_handler=cc_handler,
@@ -168,6 +172,8 @@ def run(config_path: Path) -> None:
             public_dir=public_dir,
             stt_language=cfg.voice.language,
             channels_bridge=channels_bridge,
+            tts_worker=tts_worker,
+            archive_replies=cfg.channels.archive_replies,
         )
         serve_in_thread(app, cfg.server.host, cfg.server.port)
         logging.info("HTTP server: http://%s:%d", cfg.server.host, cfg.server.port)

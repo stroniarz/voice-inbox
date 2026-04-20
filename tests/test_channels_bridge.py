@@ -124,3 +124,73 @@ def test_http_pull_clamps_huge_timeout():
     c.post("/channels/push", json={"project": "p", "text": "t"})
     r = c.get("/channels/pull", params={"project": "p", "timeout": 999.0})
     assert r.status_code == 200
+
+
+# --- /channels/reply (phase 3 — speak tool) --------------------------------
+
+class _SpyWorker:
+    def __init__(self):
+        self.calls: list[tuple[str, str]] = []
+
+    def enqueue(self, text, tag="default"):
+        self.calls.append((tag, text))
+
+
+class _SpyStore:
+    def __init__(self):
+        self.events: list[dict] = []
+
+    def archive_event(self, source, external_id, author, short, title, body, project=None):
+        self.events.append({
+            "source": source, "external_id": external_id, "author": author,
+            "short": short, "title": title, "body": body, "project": project,
+        })
+
+
+def test_reply_enqueues_tts_and_archives_by_default():
+    worker = _SpyWorker()
+    store = _SpyStore()
+    c = TestClient(make_app(channels_bridge=ChannelsBridge(), tts_worker=worker, store=store))
+    r = c.post("/channels/reply", json={"project": "ozebud", "text": "zrobione"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {"ok": True, "spoken": True, "archived": True}
+    assert worker.calls == [("default", "zrobione")]
+    assert len(store.events) == 1
+    ev = store.events[0]
+    assert ev["source"] == "cc-reply"
+    assert ev["project"] == "ozebud"
+    assert ev["body"] == "zrobione"
+
+
+def test_reply_skips_archive_when_disabled():
+    worker = _SpyWorker()
+    store = _SpyStore()
+    c = TestClient(make_app(
+        channels_bridge=ChannelsBridge(), tts_worker=worker, store=store,
+        archive_replies=False,
+    ))
+    r = c.post("/channels/reply", json={"project": "p", "text": "hi"})
+    assert r.json() == {"ok": True, "spoken": True, "archived": False}
+    assert store.events == []
+
+
+def test_reply_without_tts_worker_still_ok():
+    c = TestClient(make_app(channels_bridge=ChannelsBridge()))
+    r = c.post("/channels/reply", json={"project": "p", "text": "x"})
+    assert r.json()["ok"] is True
+    assert r.json()["spoken"] is False
+
+
+def test_reply_empty_text_returns_400():
+    c = TestClient(make_app(channels_bridge=ChannelsBridge()))
+    r = c.post("/channels/reply", json={"project": "p", "text": "   "})
+    assert r.status_code == 400
+
+
+def test_reply_without_bridge_is_not_blocked():
+    # reply should work independently of bridge presence — different concern
+    worker = _SpyWorker()
+    c = TestClient(make_app(tts_worker=worker))
+    r = c.post("/channels/reply", json={"project": "p", "text": "hi"})
+    assert r.status_code == 200

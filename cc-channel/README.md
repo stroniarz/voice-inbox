@@ -3,19 +3,28 @@
 MCP stdio server that bridges voice-inbox to a live Claude Code session via the
 [channels](https://code.claude.com/docs/en/channels-reference) contract.
 
-**Phase 2 architecture:**
+**Architecture (phase 1–3):**
 
 ```
-[PWA mic / curl] → voice-inbox :8765 → in-memory queue per project
-                                        ↑ long-poll (30s)
-                                        └── channel.ts (this subprocess)
-                                               ↓ stdio notification
-                                            [CC session X]
+[PWA mic / curl]
+    ↓ POST /channels/push {project, text}
+[voice-inbox :8765]  ← single HTTP entry
+    ↓ in-memory queue per project
+[channel.ts subprocess] long-poll GET /channels/pull?project=X
+    ↓ stdio notification
+[CC session X]
+    ↓ speak tool call  ← NEW in phase 3
+[channel.ts] POST /channels/reply
+    ↓
+[voice-inbox TTS worker]  → speaker 🔊
 ```
 
 One voice-inbox instance, N channel subprocesses (one per running CC session).
 The channel server has no HTTP listener of its own — it pulls from voice-inbox's
 `/channels/pull` endpoint keyed by project name (basename of its cwd).
+
+The `speak` tool lets Claude push short audio replies back (confirmations, summaries,
+1-2 sentence answers); longer responses stay in the terminal.
 
 ## Requirements
 
@@ -74,6 +83,15 @@ Other useful endpoints:
 - `GET /channels/active` — lists active projects (PWA dropdown source)
 - `GET /channels/pull?project=X&timeout=30` — what channel.ts polls
 - `POST /channels/register` — what channel.ts calls on startup + every 10s
+- `POST /channels/reply {project, text}` — what the `speak` tool calls; enqueues TTS
+
+## Reply tool (`speak`)
+
+When a channel message arrives, Claude may call the `speak` tool to reply with
+a short spoken confirmation. Configured via `channels.archive_replies` in
+`config.yaml`:
+- `true` (default) — each reply also archived to DB so it shows up in `/status`
+- `false` — TTS only, ephemeral
 
 ## Environment
 

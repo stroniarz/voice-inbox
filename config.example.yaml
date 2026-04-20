@@ -107,6 +107,12 @@ voice:
   #   model: whisper-1
   #   api_key_env: OPENAI_API_KEY
 
+# Claude Code /channels integration (see tools/voice-inbox/cc-channel/).
+# Endpointy są zawsze aktywne gdy server.enabled=true. Ta sekcja konfiguruje
+# tylko zachowanie — czy CC's speak() tool nagrywać do DB (widoczne w /status).
+channels:
+  archive_replies: true  # log każdy speak() CC-ka do DB; off = tylko ulotny TTS
+
 sources:
   linear:
     enabled: true

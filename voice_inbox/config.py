@@ -44,6 +44,11 @@ class VoiceConfig:
 
 
 @dataclass
+class ChannelsConfig:
+    archive_replies: bool = True  # log CC speak() calls to DB for /status visibility
+
+
+@dataclass
 class Config:
     poll_interval_seconds: int
     digest_interval_seconds: int
@@ -56,6 +61,7 @@ class Config:
     cc: CCConfig
     ask: AskConfig
     voice: VoiceConfig
+    channels: ChannelsConfig
 
 
 def load_config(path: Path) -> Config:
@@ -108,6 +114,11 @@ def load_config(path: Path) -> Config:
         language=str(voice_raw.get("language") or (raw.get("language") or "pl")),
     )
 
+    channels_raw = raw.get("channels") or {}
+    channels = ChannelsConfig(
+        archive_replies=bool(channels_raw.get("archive_replies", True)),
+    )
+
     return Config(
         poll_interval_seconds=int(raw.get("poll_interval_seconds", 60)),
         digest_interval_seconds=int(raw.get("digest_interval_seconds", 3600)),
@@ -120,4 +131,5 @@ def load_config(path: Path) -> Config:
         cc=cc,
         ask=ask,
         voice=voice,
+        channels=channels,
     )

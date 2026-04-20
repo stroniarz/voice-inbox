@@ -28,11 +28,18 @@ class ChannelPushBody(BaseModel):
     meta: dict[str, str] | None = None
 
 
+class ChannelReplyBody(BaseModel):
+    project: str
+    text: str
+
+
 def make_app(cc_handler=None, ask_handler=None, store=None,
              stt_client=None, tts_client=None,
              public_dir: Path | None = None,
              stt_language: str = "pl",
-             channels_bridge=None) -> FastAPI:
+             channels_bridge=None,
+             tts_worker=None,
+             archive_replies: bool = True) -> FastAPI:
     app = FastAPI(title="voice-inbox")
 
     @app.get("/health")
@@ -130,6 +137,37 @@ def make_app(cc_handler=None, ask_handler=None, store=None,
         if channels_bridge is None:
             return JSONResponse({"ok": False, "error": "channels disabled"}, status_code=503)
         return {"ok": True, "projects": channels_bridge.active_projects()}
+
+    @app.post("/channels/reply")
+    async def channels_reply(body: ChannelReplyBody):
+        """CC's `speak` tool hits this endpoint. Enqueue TTS and optionally archive."""
+        text = body.text.strip()
+        if not text:
+            return JSONResponse({"ok": False, "error": "empty text"}, status_code=400)
+        spoken = False
+        if tts_worker is not None:
+            try:
+                tts_worker.enqueue(text, tag="default")
+                spoken = True
+            except Exception as e:
+                logger.exception("TTS enqueue failed: %s", e)
+        archived = False
+        if archive_replies and store is not None:
+            try:
+                from datetime import datetime, timezone
+                store.archive_event(
+                    source="cc-reply",
+                    external_id=f"cc-reply:{body.project}:{datetime.now(timezone.utc).timestamp()}",
+                    author=body.project,
+                    short=text[:60],
+                    title="",
+                    body=text,
+                    project=body.project,
+                )
+                archived = True
+            except Exception as e:
+                logger.exception("archive_event failed: %s", e)
+        return {"ok": True, "spoken": spoken, "archived": archived}
 
     @app.get("/status")
     def status(hours: int = 24):
