@@ -211,6 +211,25 @@ claude --dangerously-load-development-channels server:voice-inbox
 
 Flaga `--dangerously-load-development-channels` wymagana podczas research preview (custom channels nie są jeszcze na oficjalnej allowlist Anthropic). Channel server zarejestruje się w voice-inbox pod nazwą `basename(cwd)` (np. `ozebud`).
 
+**Shortcut (opcjonalnie)** — żeby nie wklejać długiej flagi za każdym razem, dodaj funkcję do `~/.zshrc`:
+
+```zsh
+# Voice Inbox — Claude Code z /channels auto-enabled
+claudev() {
+  claude --dangerously-load-development-channels server:voice-inbox "$@"
+}
+```
+
+Po `source ~/.zshrc`:
+
+```bash
+cd ~/Projects/moj-projekt
+claudev              # CC + voice-inbox channel, od razu
+claudev --resume     # resume sesji, też z channel
+```
+
+`claude` bez wrappera dalej działa normalnie — `claudev` to opt-in, nic nie nadpisuje.
+
 ### Config
 
 ```yaml
