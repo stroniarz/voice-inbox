@@ -50,6 +50,9 @@ def digest_worker(store, summarizer, tts_worker, interval, stop_flag, window_min
             events = store.fetch_undigested(since_minutes=window_minutes)
             if not events:
                 logging.info("Digest: no events, skipping")
+            elif len(events) < 3:
+                logging.info("Digest: only %d event(s), live already covered, skipping", len(events))
+                store.mark_digested([e["id"] for e in events])
             else:
                 logging.info("Digest: %d events", len(events))
                 try:
