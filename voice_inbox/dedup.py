@@ -44,6 +44,11 @@ class DedupStore:
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_events_digested ON events(digested_at)"
         )
+        # Migration: add project column if missing
+        cols = {row[1] for row in self.conn.execute("PRAGMA table_info(events)").fetchall()}
+        if "project" not in cols:
+            self.conn.execute("ALTER TABLE events ADD COLUMN project TEXT")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_project ON events(project)")
         self.conn.commit()
 
     def is_seen(self, source: str, external_id: str) -> bool:
@@ -79,15 +84,57 @@ class DedupStore:
             self.conn.commit()
 
     def archive_event(self, source: str, external_id: str, author: str,
-                      short: str, title: str, body: str) -> None:
+                      short: str, title: str, body: str,
+                      project: str | None = None) -> None:
         with self.lock:
             self.conn.execute(
-                "INSERT INTO events (source, external_id, author, short, title, body, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO events (source, external_id, author, short, title, body, created_at, project) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (source, external_id, author, short, title, body,
-                 datetime.now(timezone.utc).isoformat()),
+                 datetime.now(timezone.utc).isoformat(), project),
             )
             self.conn.commit()
+
+    def recent_events(self, hours: int = 24,
+                      project: str | None = None,
+                      limit: int = 200) -> list[dict]:
+        """Recent events for /status and /ask context. Most recent first."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        params: list = [cutoff]
+        sql = (
+            "SELECT id, source, project, author, short, title, body, created_at, digested_at "
+            "FROM events WHERE created_at >= ?"
+        )
+        if project:
+            sql += " AND project = ?"
+            params.append(project)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self.lock:
+            rows = self.conn.execute(sql, params).fetchall()
+        return [
+            {"id": r[0], "source": r[1], "project": r[2], "author": r[3],
+             "short": r[4], "title": r[5], "body": r[6],
+             "created_at": r[7], "digested_at": r[8]}
+            for r in rows
+        ]
+
+    def project_summary(self, hours: int = 24) -> list[dict]:
+        """Aggregated per-project activity for /status endpoint."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT COALESCE(project, '(none)') AS p, source, "
+                "COUNT(*) AS cnt, MAX(created_at) AS last_at "
+                "FROM events WHERE created_at >= ? "
+                "GROUP BY p, source "
+                "ORDER BY last_at DESC",
+                (cutoff,),
+            ).fetchall()
+        return [
+            {"project": r[0], "source": r[1], "count": r[2], "last_at": r[3]}
+            for r in rows
+        ]
 
     def fetch_undigested(self, since_minutes: int = 60) -> list[dict]:
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).isoformat()

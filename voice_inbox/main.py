@@ -15,6 +15,7 @@ from .tts.worker import TTSWorker
 from .adapters.linear import LinearAdapter
 from .adapters.slack import SlackAdapter
 from .cc import CCHandler
+from .ask import AskHandler
 from .server import make_app, serve_in_thread
 
 
@@ -115,9 +116,19 @@ def run(config_path: Path) -> None:
             )
             logging.info("Claude Code adapter enabled (cooldown=%ss)",
                          cfg.cc.cooldown_seconds)
-        else:
-            cc_handler = lambda _payload: None
-        app = make_app(cc_handler)
+
+        ask_handler = None
+        if cfg.ask.enabled:
+            ask_handler = AskHandler(
+                llm, store, language=cfg.language,
+                history_hours=cfg.ask.history_hours,
+                max_events=cfg.ask.max_events,
+                max_tokens=cfg.ask.max_tokens,
+            )
+            logging.info("Ask handler enabled (history=%sh)",
+                         cfg.ask.history_hours)
+
+        app = make_app(cc_handler=cc_handler, ask_handler=ask_handler, store=store)
         serve_in_thread(app, cfg.server.host, cfg.server.port)
         logging.info("HTTP server: http://%s:%d", cfg.server.host, cfg.server.port)
 
@@ -155,6 +166,7 @@ def run(config_path: Path) -> None:
                     store.archive_event(
                         event.source, event.external_id, event.author,
                         event.short, event.title, event.body,
+                        project=event.project,
                     )
                     line = f"{event.source}, {event.short}"
                     tag = "critical" if event.priority in (1, 2) else "default"

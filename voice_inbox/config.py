@@ -26,6 +26,14 @@ class CCConfig:
 
 
 @dataclass
+class AskConfig:
+    enabled: bool = False
+    history_hours: int = 24
+    max_events: int = 80
+    max_tokens: int = 400
+
+
+@dataclass
 class Config:
     poll_interval_seconds: int
     digest_interval_seconds: int
@@ -36,6 +44,7 @@ class Config:
     sources: list[SourceConfig]
     server: ServerConfig
     cc: CCConfig
+    ask: AskConfig
 
 
 def load_config(path: Path) -> Config:
@@ -70,6 +79,14 @@ def load_config(path: Path) -> Config:
         ignore_events=tuple(cc_raw.get("ignore_events") or ()),
     )
 
+    ask_raw = raw.get("ask") or {}
+    ask = AskConfig(
+        enabled=bool(ask_raw.get("enabled", False)),
+        history_hours=int(ask_raw.get("history_hours", 24)),
+        max_events=int(ask_raw.get("max_events", 80)),
+        max_tokens=int(ask_raw.get("max_tokens", 400)),
+    )
+
     return Config(
         poll_interval_seconds=int(raw.get("poll_interval_seconds", 60)),
         digest_interval_seconds=int(raw.get("digest_interval_seconds", 3600)),
@@ -80,4 +97,5 @@ def load_config(path: Path) -> Config:
         sources=sources,
         server=server,
         cc=cc,
+        ask=ask,
     )

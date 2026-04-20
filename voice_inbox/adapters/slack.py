@@ -127,6 +127,7 @@ class SlackAdapter:
                     short=t(self.language, "slack_dm"),
                     title=f"DM / {author}",
                     body=msg.get("text") or "",
+                    project=f"dm:{author}",
                 )
 
     def _poll_mentions(self, since: str) -> Iterable[Event]:
@@ -161,4 +162,5 @@ class SlackAdapter:
                 short=t(self.language, "slack_mention", channel=channel),
                 title=f"mention #{channel} / {author}",
                 body=m.get("text") or "",
+                project=f"#{channel}",
             )

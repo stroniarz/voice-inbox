@@ -72,6 +72,15 @@ claude_code:
   cooldown_seconds: 60  # minimum między ogłoszeniami tego samego typu w tym samym projekcie
   ignore_events: []  # np. ["SubagentStop"] żeby wyciszyć subagenty
 
+# ── Ask endpoint (pytasz tekstem "co słychać?", agent odpowiada z kontekstu) ──
+# Wymaga server.enabled=true. Endpoint: POST /ask {"q": "...", "project": "opcjonalnie"}
+# Także GET /status?hours=24 zwraca snapshot aktywności JSON.
+ask:
+  enabled: false
+  history_hours: 24  # ile wstecz szukać eventów do kontekstu
+  max_events: 80  # limit eventów w kontekście LLM
+  max_tokens: 400  # max tokenów odpowiedzi
+
 sources:
   linear:
     enabled: true

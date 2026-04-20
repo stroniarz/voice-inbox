@@ -137,6 +137,25 @@ python3 tools/install_cc_hooks.py --remove
 
 Tworzy `.bak` na wszelki wypadek.
 
+## Ask endpoint (rozmowa, nie raport)
+
+Jeśli włączysz `ask.enabled: true` (wymaga `server.enabled: true`), dostajesz dwa dodatkowe endpointy HTTP:
+
+**`POST /ask`** — pytanie tekstem, odpowiedź LLM z kontekstu ostatnich eventów:
+
+```bash
+curl -s http://127.0.0.1:8765/ask \
+  -H 'content-type: application/json' \
+  -d '{"q": "co słychać w ircsklep?"}' | jq
+# {"ok":true,"answer":"Claude skończył dwa taski w ircsklep, nowa nitka komentarzy na STR-165. Nic pilnego.","question":"...","project":null}
+```
+
+Opcjonalnie `"project": "STR"` filtruje kontekst do jednego projektu (Linear team key / Slack channel / CC repo basename).
+
+**`GET /status?hours=24`** — JSON snapshot: projekty + ostatnie eventy (do debugowania, integracji, UI).
+
+Prompt systemowy (PL/EN w `i18n.py`) wymusza conversational styl: 2-4 zdania, bez list, bez markdownu, gotowe pod TTS.
+
 ## Koszty
 
 Przy 30-50 eventach/dzień:

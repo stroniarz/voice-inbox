@@ -145,6 +145,7 @@ class LinearAdapter:
                 body_text = t(self.language, "linear_update",
                               title=issue_title, state=issue["state"]["name"])
             short = f"{prefix}{body_text}"
+            team_key = (issue.get("team") or {}).get("key")
             yield Event(
                 source=self.name,
                 external_id=ext_id,
@@ -153,6 +154,7 @@ class LinearAdapter:
                 title=f"[{ident}] {issue_title}",
                 body=issue.get("description") or "",
                 priority=priority,
+                project=team_key,
             )
             if issue["updatedAt"] > latest:
                 latest = issue["updatedAt"]
@@ -171,6 +173,7 @@ class LinearAdapter:
                 priority = int(issue.get("priority") or 3)
                 prefix = t(self.language, "urgent_prefix") if priority in (1, 2) else ""
                 short = f"{prefix}{t(self.language, 'linear_comment', title=issue_title)}"
+                team_key = ident.split("-")[0] if "-" in ident else None
                 yield Event(
                     source=self.name,
                     external_id=ext_id,
@@ -179,6 +182,7 @@ class LinearAdapter:
                     title=f"[{ident}] {issue_title}",
                     body=c.get("body") or "",
                     priority=priority,
+                    project=team_key,
                 )
                 if c["createdAt"] > latest:
                     latest = c["createdAt"]

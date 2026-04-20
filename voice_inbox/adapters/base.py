@@ -11,6 +11,7 @@ class Event:
     title: str
     body: str
     priority: int = 3  # 0=None, 1=Urgent, 2=High, 3=Normal (default), 4=Low
+    project: str | None = None  # logical project key (team for Linear, channel for Slack, cwd basename for CC)
 
 
 class Adapter(Protocol):

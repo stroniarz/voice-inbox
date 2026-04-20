@@ -82,6 +82,7 @@ class CCHandler:
             self.store.archive_event(
                 "claude_code", external_id, "claude_code",
                 short, f"Claude Code {event}", str(payload)[:500],
+                project=project,
             )
         except Exception as e:
             logger.error("CC archive failed: %s", e)
