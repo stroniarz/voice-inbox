@@ -1,5 +1,6 @@
 import base64
 import logging
+import re
 import threading
 from pathlib import Path
 
@@ -10,6 +11,27 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+# Voice verdict keywords: three-in-a-row avoids accidental single-word matches
+# in normal speech. Tolerant to commas, extra whitespace, trailing punctuation,
+# and STT capitalisation.
+_TAK_RE = re.compile(r"\btak\b[\s,.!?]*\btak\b[\s,.!?]*\btak\b", re.IGNORECASE)
+_NIE_RE = re.compile(r"\bnie\b[\s,.!?]*\bnie\b[\s,.!?]*\bnie\b", re.IGNORECASE)
+_YES_RE = re.compile(r"\byes\b[\s,.!?]*\byes\b[\s,.!?]*\byes\b", re.IGNORECASE)
+_NO_RE = re.compile(r"\bno\b[\s,.!?]*\bno\b[\s,.!?]*\bno\b", re.IGNORECASE)
+
+
+def _normalize_verdict(transcript: str) -> str | None:
+    """Return 'allow', 'deny', or None based on whether the transcript contains
+    the three-in-a-row verdict keyword (pl or en)."""
+    if not transcript:
+        return None
+    if _TAK_RE.search(transcript) or _YES_RE.search(transcript):
+        return "allow"
+    if _NIE_RE.search(transcript) or _NO_RE.search(transcript):
+        return "deny"
+    return None
 
 
 class AskBody(BaseModel):
@@ -271,6 +293,54 @@ def make_app(cc_handler=None, ask_handler=None, store=None,
             return JSONResponse({"ok": False, "error": "permissions disabled"}, status_code=503)
         limit = max(1, min(limit, 500))
         return {"ok": True, "history": permissions_broker.history(limit=limit)}
+
+    @app.post("/channels/voice")
+    async def channels_voice(
+        audio: UploadFile = File(...),
+        project: str = Form(...),
+    ):
+        """STT + routing: transcribe the clip and decide whether it's a permission
+        verdict ('tak tak tak' / 'nie nie nie') for the given project, or a prompt
+        to push into that CC session."""
+        if stt_client is None:
+            return JSONResponse({"ok": False, "error": "stt disabled"}, status_code=503)
+        if channels_bridge is None and permissions_broker is None:
+            return JSONResponse({"ok": False, "error": "channels disabled"}, status_code=503)
+        raw = await audio.read()
+        if not raw:
+            return JSONResponse({"ok": False, "error": "empty audio"}, status_code=400)
+        try:
+            transcript = stt_client.transcribe(
+                raw, filename=audio.filename or "audio.webm", language=stt_language,
+            )
+        except Exception as e:
+            logger.exception("STT failed: %s", e)
+            return JSONResponse({"ok": False, "error": f"stt: {e}"}, status_code=500)
+
+        normalized = _normalize_verdict(transcript)
+        result = {"ok": True, "transcript": transcript, "project": project}
+
+        if normalized == "allow" and permissions_broker is not None:
+            resolved = await permissions_broker.respond(project=project, behavior="allow")
+            result["action"] = "permission_allow"
+            result["resolved"] = resolved  # None if nothing was pending
+            return result
+        if normalized == "deny" and permissions_broker is not None:
+            resolved = await permissions_broker.respond(project=project, behavior="deny")
+            result["action"] = "permission_deny"
+            result["resolved"] = resolved
+            return result
+
+        if not transcript.strip():
+            result["action"] = "empty"
+            return result
+
+        if channels_bridge is not None:
+            await channels_bridge.push(project, transcript)
+            result["action"] = "push"
+            return result
+        result["action"] = "noop"
+        return result
 
     @app.get("/status")
     def status(hours: int = 24):

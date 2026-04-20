@@ -38,6 +38,7 @@
   }
   .user { background: #1f2a3a; margin-left: auto; border-bottom-right-radius: 4px; }
   .bot { background: #1a1d22; border-bottom-left-radius: 4px; }
+  .meta { font-size: 11px; color: #6b7480; margin: 2px 8px; }
   .status {
     color: #6b7480; font-size: 13px; text-align: center;
     padding: 6px; min-height: 24px;
@@ -56,21 +57,46 @@
   }
   #ptt.rec { background: #dc2626; transform: scale(1.08); box-shadow: 0 8px 32px rgba(220, 38, 38, 0.5); }
   #ptt:disabled { background: #374151; box-shadow: none; }
+  #perm-banner {
+    background: #7c2d12; border-bottom: 1px solid #c2410c;
+    color: #fed7aa; padding: 12px 16px; display: none;
+  }
+  #perm-banner.visible { display: block; }
+  #perm-banner .title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  #perm-banner .desc { font-size: 13px; color: #fde68a; margin-bottom: 10px; line-height: 1.35; word-break: break-word; }
+  #perm-banner .actions { display: flex; gap: 8px; }
+  #perm-banner button {
+    flex: 1; padding: 10px; border-radius: 8px; border: none;
+    font-size: 14px; font-weight: 600; letter-spacing: 0.3px;
+  }
+  #perm-banner .allow { background: #16a34a; color: white; }
+  #perm-banner .deny { background: #525252; color: white; }
+  #perm-banner .hint { font-size: 11px; color: #fbbf24; margin-top: 8px; text-align: center; }
+  option.live { color: #86efac; }
 </style>
 </head>
 <body>
 <header>
   <h1>VOICE INBOX</h1>
   <div class="right">
-    <select id="project-select" title="Filtr projektu">
-      <option value="">Wszystkie projekty</option>
+    <select id="project-select" title="Target">
+      <option value="">Ask (bot)</option>
     </select>
     <button id="status-btn" title="Status">Status</button>
     <button id="reset-btn" title="Wyczyść log">Reset</button>
   </div>
 </header>
+<div id="perm-banner">
+  <div class="title" id="perm-title">Claude prosi o zgodę</div>
+  <div class="desc" id="perm-desc"></div>
+  <div class="actions">
+    <button class="allow" id="perm-allow">Tak</button>
+    <button class="deny" id="perm-deny">Nie</button>
+  </div>
+  <div class="hint">Głosem: "tak tak tak" / "nie nie nie"</div>
+</div>
 <main id="log"></main>
-<div class="status" id="status">Przytrzymaj i mów. Na Macu: spacja.</div>
+<div class="status" id="status">Wybierz target i przytrzymaj. Na Macu: spacja.</div>
 <footer>
   <button id="ptt">Przytrzymaj</button>
 </footer>
@@ -83,6 +109,11 @@ const resetBtn = document.getElementById('reset-btn');
 const statusBtn = document.getElementById('status-btn');
 const projectSelect = document.getElementById('project-select');
 const player = document.getElementById('player');
+const permBanner = document.getElementById('perm-banner');
+const permTitle = document.getElementById('perm-title');
+const permDesc = document.getElementById('perm-desc');
+const permAllowBtn = document.getElementById('perm-allow');
+const permDenyBtn = document.getElementById('perm-deny');
 
 const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 let audioUnlocked = false;
@@ -94,6 +125,8 @@ function unlockAudio() {
 let mediaRecorder = null;
 let chunks = [];
 let stream = null;
+let activeProjects = new Set();  // projects with a live CC session (from /channels/active)
+let currentPending = null;       // top pending permission or null
 
 function pickMime() {
   const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav'];
@@ -106,13 +139,33 @@ async function ensureStream() {
   return stream;
 }
 
-function addTurn(text, who) {
+function addTurn(text, who, meta) {
   const div = document.createElement('div');
   div.className = 'turn ' + who;
   div.textContent = text;
   log.appendChild(div);
+  if (meta) {
+    const m = document.createElement('div');
+    m.className = 'meta';
+    m.textContent = meta;
+    if (who === 'user') m.style.textAlign = 'right';
+    log.appendChild(m);
+  }
   log.scrollTop = log.scrollHeight;
   return div;
+}
+
+function addMeta(text) {
+  const m = document.createElement('div');
+  m.className = 'meta';
+  m.textContent = text;
+  m.style.textAlign = 'center';
+  log.appendChild(m);
+  log.scrollTop = log.scrollHeight;
+}
+
+function selectedTargetIsLive() {
+  return projectSelect.value && activeProjects.has(projectSelect.value);
 }
 
 async function start() {
@@ -129,7 +182,8 @@ async function start() {
     mediaRecorder.start();
     ptt.classList.add('rec');
     ptt.textContent = 'Mów…';
-    status.textContent = 'Nagrywam';
+    const target = projectSelect.value || 'ask-bot';
+    status.textContent = `Nagrywam → ${target}`;
   } catch (e) {
     status.textContent = 'Błąd mikrofonu: ' + e.message;
   }
@@ -149,23 +203,48 @@ async function onStop() {
   const ext = (blob.type.split('/')[1] || 'webm').split(';')[0];
   const fd = new FormData();
   fd.append('audio', blob, `clip.${ext}`);
-  if (projectSelect.value) fd.append('project', projectSelect.value);
 
+  const liveTarget = selectedTargetIsLive();
   try {
-    const r = await fetch('/voice', { method: 'POST', body: fd });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    if (data.transcript) addTurn(data.transcript, 'user');
-    if (data.answer) addTurn(data.answer, 'bot');
-    status.textContent = '';
-    if (data.audio_b64 && data.mime) {
-      player.src = `data:${data.mime};base64,${data.audio_b64}`;
-      try {
-        await player.play();
-      } catch (err) {
-        status.textContent = 'Kliknij ekran żeby odblokować dźwięk';
-        const resume = () => { player.play().catch(() => {}); document.removeEventListener('click', resume); };
-        document.addEventListener('click', resume, { once: true });
+    if (liveTarget) {
+      // channel mode: STT + routing on backend (push / permission-allow / permission-deny)
+      fd.append('project', projectSelect.value);
+      const r = await fetch('/channels/voice', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      if (data.transcript) addTurn(data.transcript, 'user', `→ ${data.project}`);
+      if (data.action === 'push') {
+        addMeta(`wysłane do ${data.project}`);
+      } else if (data.action === 'permission_allow') {
+        addMeta(data.resolved ? `✓ allow ${data.resolved.tool_name}` : '✓ allow (brak pending)');
+      } else if (data.action === 'permission_deny') {
+        addMeta(data.resolved ? `✗ deny ${data.resolved.tool_name}` : '✗ deny (brak pending)');
+      } else if (data.action === 'empty') {
+        addMeta('pusty transcript');
+      } else {
+        addMeta(`action: ${data.action || 'noop'}`);
+      }
+      status.textContent = '';
+      // refresh pending banner now
+      pollPermissions();
+    } else {
+      // ask-bot mode (existing /voice endpoint)
+      if (projectSelect.value) fd.append('project', projectSelect.value);
+      const r = await fetch('/voice', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      if (data.transcript) addTurn(data.transcript, 'user');
+      if (data.answer) addTurn(data.answer, 'bot');
+      status.textContent = '';
+      if (data.audio_b64 && data.mime) {
+        player.src = `data:${data.mime};base64,${data.audio_b64}`;
+        try {
+          await player.play();
+        } catch (err) {
+          status.textContent = 'Kliknij ekran żeby odblokować dźwięk';
+          const resume = () => { player.play().catch(() => {}); document.removeEventListener('click', resume); };
+          document.addEventListener('click', resume, { once: true });
+        }
       }
     }
   } catch (e) {
@@ -210,18 +289,103 @@ statusBtn.addEventListener('click', async () => {
       ).join('\n');
       addTurn('Aktywność 24h:\n' + lines, 'bot');
     }
-    // populate project filter
-    const unique = [...new Set(projects.map(p => p.project).filter(Boolean))];
-    const current = projectSelect.value;
-    projectSelect.innerHTML = '<option value="">Wszystkie projekty</option>' +
-      unique.map(p => `<option value="${p}"${p===current?' selected':''}>${p}</option>`).join('');
   } catch (e) {
     status.textContent = 'Status error: ' + e.message;
   }
 });
 
-// Prefetch projects on load
-statusBtn.click();
+async function refreshProjectSelect() {
+  // merge active CC sessions (from /channels/active) with historical projects (from /status)
+  let active = [];
+  try {
+    const r = await fetch('/channels/active');
+    if (r.ok) {
+      const data = await r.json();
+      active = (data.projects || []).map(p => p.project);
+    }
+  } catch (_) {}
+  activeProjects = new Set(active);
+
+  let historical = [];
+  try {
+    const r = await fetch('/status?hours=24');
+    if (r.ok) {
+      const data = await r.json();
+      historical = [...new Set((data.projects || []).map(p => p.project).filter(Boolean))];
+    }
+  } catch (_) {}
+
+  const current = projectSelect.value;
+  const all = [...new Set([...active, ...historical])];
+  const opts = ['<option value="">Ask (bot)</option>'];
+  for (const p of all) {
+    const isLive = activeProjects.has(p);
+    const label = isLive ? `🟢 ${p} (live)` : p;
+    const cls = isLive ? ' class="live"' : '';
+    const sel = p === current ? ' selected' : '';
+    opts.push(`<option value="${p}"${cls}${sel}>${label}</option>`);
+  }
+  projectSelect.innerHTML = opts.join('');
+}
+
+async function pollPermissions() {
+  try {
+    const r = await fetch('/channels/permissions/pending');
+    if (!r.ok) return;
+    const data = await r.json();
+    const pending = data.pending || [];
+    // pick the oldest pending matching our selected project, or just oldest overall
+    let top = null;
+    if (projectSelect.value) {
+      top = pending.find(p => p.project === projectSelect.value) || null;
+    }
+    if (!top && pending.length) top = pending[0];
+    if (top) {
+      const prev = currentPending;
+      currentPending = top;
+      permTitle.textContent = `Claude w ${top.project}: ${top.tool_name}`;
+      permDesc.textContent = top.description + (top.input_preview ? `\n${top.input_preview}` : '');
+      permBanner.classList.add('visible');
+      // audio cue on NEW pending (not seen before by request_id)
+      if (!prev || prev.request_id !== top.request_id) {
+        unlockAudio();
+      }
+    } else {
+      currentPending = null;
+      permBanner.classList.remove('visible');
+    }
+  } catch (_) {}
+}
+
+async function respondPermission(behavior) {
+  if (!currentPending) return;
+  try {
+    const r = await fetch('/channels/permissions/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: currentPending.project, behavior }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (data.resolved) {
+      addMeta(`${behavior === 'allow' ? '✓ allow' : '✗ deny'} ${data.resolved.tool_name} (${currentPending.project})`);
+    }
+    currentPending = null;
+    permBanner.classList.remove('visible');
+    pollPermissions();
+  } catch (e) {
+    status.textContent = 'Respond error: ' + e.message;
+  }
+}
+
+permAllowBtn.addEventListener('click', () => respondPermission('allow'));
+permDenyBtn.addEventListener('click', () => respondPermission('deny'));
+
+// boot
+refreshProjectSelect();
+pollPermissions();
+setInterval(refreshProjectSelect, 15000);  // active CC sessions may come and go
+setInterval(pollPermissions, 2000);        // responsive banner
 </script>
 </body>
 </html>
