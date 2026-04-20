@@ -10,14 +10,18 @@ class OpenAITTS:
         self.voice = voice
         self.model = model
 
-    def speak(self, text: str) -> None:
+    def synthesize(self, text: str) -> tuple[bytes, str]:
         resp = self.client.audio.speech.create(
             model=self.model,
             voice=self.voice,
             input=text,
         )
+        return resp.content, "audio/mpeg"
+
+    def speak(self, text: str) -> None:
+        audio, _ = self.synthesize(text)
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            f.write(resp.content)
+            f.write(audio)
             path = f.name
         try:
             subprocess.run(["afplay", path], check=False)

@@ -1,0 +1,18 @@
+{
+  "name": "Voice Inbox",
+  "short_name": "VoiceBox",
+  "description": "Prywatny agent audio — rozmowa z własnymi projektami",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d10",
+  "theme_color": "#0b0d10",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

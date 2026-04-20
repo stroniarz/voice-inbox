@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Voice Inbox" />
+<meta name="theme-color" content="#0b0d10" />
+<title>Voice Inbox</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icon.svg" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100dvh;
+    background: #0b0d10; color: #e7eaee;
+    font: 16px -apple-system, system-ui, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 14px 16px max(14px, env(safe-area-inset-top)) 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #1a1d22;
+  }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  header .right { display: flex; gap: 8px; }
+  header button, #project-select {
+    background: none; border: 1px solid #2a2f36; color: #9aa3ad;
+    padding: 6px 10px; border-radius: 8px; font-size: 12px;
+  }
+  main { flex: 1; padding: 8px 16px 16px; overflow-y: auto; }
+  .turn {
+    margin: 6px 0; padding: 9px 13px; border-radius: 14px; max-width: 85%;
+    line-height: 1.4; font-size: 15px;
+  }
+  .user { background: #1f2a3a; margin-left: auto; border-bottom-right-radius: 4px; }
+  .bot { background: #1a1d22; border-bottom-left-radius: 4px; }
+  .status {
+    color: #6b7480; font-size: 13px; text-align: center;
+    padding: 6px; min-height: 24px;
+  }
+  footer {
+    padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+    display: flex; justify-content: center;
+  }
+  #ptt {
+    width: 128px; height: 128px; border-radius: 50%;
+    background: #2563eb; color: white; border: none;
+    font-size: 14px; font-weight: 600; letter-spacing: 0.5px;
+    user-select: none; -webkit-user-select: none; touch-action: none;
+    transition: transform 0.08s, background 0.12s;
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35);
+  }
+  #ptt.rec { background: #dc2626; transform: scale(1.08); box-shadow: 0 8px 32px rgba(220, 38, 38, 0.5); }
+  #ptt:disabled { background: #374151; box-shadow: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VOICE INBOX</h1>
+  <div class="right">
+    <select id="project-select" title="Filtr projektu">
+      <option value="">Wszystkie projekty</option>
+    </select>
+    <button id="status-btn" title="Status">Status</button>
+    <button id="reset-btn" title="Wyczyść log">Reset</button>
+  </div>
+</header>
+<main id="log"></main>
+<div class="status" id="status">Przytrzymaj i mów. Na Macu: spacja.</div>
+<footer>
+  <button id="ptt">Przytrzymaj</button>
+</footer>
+<script>
+const ptt = document.getElementById('ptt');
+const log = document.getElementById('log');
+const status = document.getElementById('status');
+const resetBtn = document.getElementById('reset-btn');
+const statusBtn = document.getElementById('status-btn');
+const projectSelect = document.getElementById('project-select');
+
+let mediaRecorder = null;
+let chunks = [];
+let stream = null;
+let currentAudio = null;
+
+function pickMime() {
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav'];
+  return types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+}
+
+async function ensureStream() {
+  if (stream && stream.active) return stream;
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  return stream;
+}
+
+function addTurn(text, who) {
+  const div = document.createElement('div');
+  div.className = 'turn ' + who;
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+async function start() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') return;
+  if (currentAudio) { try { currentAudio.pause(); } catch (_) {} }
+  try {
+    await ensureStream();
+    chunks = [];
+    const mime = pickMime();
+    mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    mediaRecorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    mediaRecorder.onstop = onStop;
+    mediaRecorder.start();
+    ptt.classList.add('rec');
+    ptt.textContent = 'Mów…';
+    status.textContent = 'Nagrywam';
+  } catch (e) {
+    status.textContent = 'Błąd mikrofonu: ' + e.message;
+  }
+}
+
+function stop() {
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+  mediaRecorder.stop();
+  ptt.classList.remove('rec');
+  ptt.textContent = 'Przetwarzam…';
+  ptt.disabled = true;
+  status.textContent = 'Wysyłam…';
+}
+
+async function onStop() {
+  const blob = new Blob(chunks, { type: chunks[0]?.type || 'audio/webm' });
+  const ext = (blob.type.split('/')[1] || 'webm').split(';')[0];
+  const fd = new FormData();
+  fd.append('audio', blob, `clip.${ext}`);
+  if (projectSelect.value) fd.append('project', projectSelect.value);
+
+  try {
+    const r = await fetch('/voice', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (data.transcript) addTurn(data.transcript, 'user');
+    if (data.answer) addTurn(data.answer, 'bot');
+    status.textContent = '';
+    if (data.audio_b64 && data.mime) {
+      currentAudio = new Audio(`data:${data.mime};base64,${data.audio_b64}`);
+      await currentAudio.play().catch(() => {});
+    }
+  } catch (e) {
+    status.textContent = 'Błąd: ' + e.message;
+  } finally {
+    ptt.disabled = false;
+    ptt.textContent = 'Przytrzymaj';
+  }
+}
+
+ptt.addEventListener('pointerdown', e => { e.preventDefault(); start(); });
+ptt.addEventListener('pointerup', e => { e.preventDefault(); stop(); });
+ptt.addEventListener('pointercancel', stop);
+ptt.addEventListener('pointerleave', stop);
+
+window.addEventListener('keydown', e => {
+  if (e.code !== 'Space' || e.repeat) return;
+  if (document.activeElement && document.activeElement.tagName === 'SELECT') return;
+  e.preventDefault(); start();
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space') { e.preventDefault(); stop(); }
+});
+
+resetBtn.addEventListener('click', () => {
+  log.innerHTML = '';
+  status.textContent = 'Reset';
+});
+
+statusBtn.addEventListener('click', async () => {
+  try {
+    const r = await fetch('/status?hours=24');
+    const data = await r.json();
+    if (!data.ok) { status.textContent = 'Status error'; return; }
+    const projects = data.projects || [];
+    log.innerHTML = '';
+    if (!projects.length) {
+      addTurn('Brak aktywności w ostatnich 24h.', 'bot');
+    } else {
+      const lines = projects.map(p =>
+        `${p.project} / ${p.source}: ${p.count} events`
+      ).join('\n');
+      addTurn('Aktywność 24h:\n' + lines, 'bot');
+    }
+    // populate project filter
+    const unique = [...new Set(projects.map(p => p.project).filter(Boolean))];
+    const current = projectSelect.value;
+    projectSelect.innerHTML = '<option value="">Wszystkie projekty</option>' +
+      unique.map(p => `<option value="${p}"${p===current?' selected':''}>${p}</option>`).join('');
+  } catch (e) {
+    status.textContent = 'Status error: ' + e.message;
+  }
+});
+
+// Prefetch projects on load
+statusBtn.click();
+</script>
+</body>
+</html>

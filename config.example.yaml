@@ -81,6 +81,27 @@ ask:
   max_events: 80  # limit eventów w kontekście LLM
   max_tokens: 400  # max tokenów odpowiedzi
 
+# ── Voice mode (STT + push-to-talk PWA) ────────────────────────────────
+# Wymaga server.enabled=true + ask.enabled=true. Endpoint: POST /voice
+# (multipart audio). Frontend PWA serwowany spod / jeśli serve_public=true.
+# iOS Safari wymaga HTTPS dla mikrofonu → użyj Tailscale Serve:
+#   tailscale serve --bg --https=443 http://localhost:8765
+voice:
+  enabled: false
+  serve_public: true  # mount public/ jako PWA pod /
+  language: pl        # wskazówka języka dla STT
+  stt:
+    provider: whisper_local  # whisper_local | openai
+    model: small       # tiny | base | small | medium | large-v3
+    device: auto       # auto | cpu | cuda | mps
+    compute_type: default
+    beam_size: 1
+  # OpenAI Whisper API alternatywnie (płatny, $0.006/min):
+  # stt:
+  #   provider: openai
+  #   model: whisper-1
+  #   api_key_env: OPENAI_API_KEY
+
 sources:
   linear:
     enabled: true

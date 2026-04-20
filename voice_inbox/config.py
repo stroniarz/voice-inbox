@@ -34,6 +34,14 @@ class AskConfig:
 
 
 @dataclass
+class VoiceConfig:
+    enabled: bool = False
+    serve_public: bool = True  # mount /public as PWA
+    stt: dict = field(default_factory=dict)
+    language: str = "pl"
+
+
+@dataclass
 class Config:
     poll_interval_seconds: int
     digest_interval_seconds: int
@@ -45,6 +53,7 @@ class Config:
     server: ServerConfig
     cc: CCConfig
     ask: AskConfig
+    voice: VoiceConfig
 
 
 def load_config(path: Path) -> Config:
@@ -87,6 +96,14 @@ def load_config(path: Path) -> Config:
         max_tokens=int(ask_raw.get("max_tokens", 400)),
     )
 
+    voice_raw = raw.get("voice") or {}
+    voice = VoiceConfig(
+        enabled=bool(voice_raw.get("enabled", False)),
+        serve_public=bool(voice_raw.get("serve_public", True)),
+        stt=voice_raw.get("stt") or {},
+        language=str(voice_raw.get("language") or (raw.get("language") or "pl")),
+    )
+
     return Config(
         poll_interval_seconds=int(raw.get("poll_interval_seconds", 60)),
         digest_interval_seconds=int(raw.get("digest_interval_seconds", 3600)),
@@ -98,4 +115,5 @@ def load_config(path: Path) -> Config:
         server=server,
         cc=cc,
         ask=ask,
+        voice=voice,
     )

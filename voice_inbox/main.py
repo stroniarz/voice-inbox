@@ -17,6 +17,7 @@ from .adapters.slack import SlackAdapter
 from .cc import CCHandler
 from .ask import AskHandler
 from .server import make_app, serve_in_thread
+from .stt import make_stt
 
 
 ADAPTERS = {
@@ -128,9 +129,38 @@ def run(config_path: Path) -> None:
             logging.info("Ask handler enabled (history=%sh)",
                          cfg.ask.history_hours)
 
-        app = make_app(cc_handler=cc_handler, ask_handler=ask_handler, store=store)
+        stt_client = None
+        public_dir = None
+        if cfg.voice.enabled:
+            if ask_handler is None:
+                logging.warning("voice.enabled=true but ask.enabled=false — voice requires ask")
+            else:
+                try:
+                    stt_client = make_stt(cfg.voice.stt)
+                    logging.info("STT: %s", cfg.voice.stt.get("provider", "whisper_local"))
+                except Exception as e:
+                    logging.error("STT init failed: %s", e)
+            if cfg.voice.serve_public:
+                public_dir = Path(__file__).resolve().parent.parent / "public"
+                if not public_dir.is_dir():
+                    public_dir = None
+                    logging.warning("public/ directory not found — PWA not served")
+
+        tts_for_voice = clients.get("default")
+
+        app = make_app(
+            cc_handler=cc_handler,
+            ask_handler=ask_handler,
+            store=store,
+            stt_client=stt_client,
+            tts_client=tts_for_voice,
+            public_dir=public_dir,
+            stt_language=cfg.voice.language,
+        )
         serve_in_thread(app, cfg.server.host, cfg.server.port)
         logging.info("HTTP server: http://%s:%d", cfg.server.host, cfg.server.port)
+        if public_dir:
+            logging.info("PWA served at http://%s:%d/", cfg.server.host, cfg.server.port)
 
     if not adapters and not cfg.cc.enabled:
         logging.error("No adapters or push receivers enabled. Exiting.")

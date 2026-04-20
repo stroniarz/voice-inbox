@@ -156,6 +156,32 @@ Opcjonalnie `"project": "STR"` filtruje kontekst do jednego projektu (Linear tea
 
 Prompt systemowy (PL/EN w `i18n.py`) wymusza conversational styl: 2-4 zdania, bez list, bez markdownu, gotowe pod TTS.
 
+## Voice mode (push-to-talk PWA)
+
+Włącz `voice.enabled: true` (wymaga `server.enabled` + `ask.enabled`). Dostajesz:
+
+- **PWA pod `/`** — push-to-talk, spacja na Macu / przytrzymanie przycisku na mobile. Ciemny motyw, ikona, manifest, działa jako zainstalowana aplikacja po "Dodaj do ekranu głównego".
+- **`POST /voice`** — multipart upload audio → STT (faster-whisper lokalnie albo OpenAI API) → AskHandler → TTS (Twój skonfigurowany provider) → JSON z `transcript`, `answer`, `audio_b64`, `mime`.
+
+**iOS Safari:** mikrofon wymaga HTTPS. Najprościej przez Tailscale Serve:
+
+```bash
+tailscale serve --bg --https=443 http://localhost:8765
+# otwórz https://twoj-mac.xxx.ts.net na iPhonie → "Udostępnij" → "Do ekranu głównego"
+```
+
+**Modele STT (`voice.stt`):**
+
+| provider | model | koszt | uwagi |
+|----------|-------|-------|-------|
+| `whisper_local` | `tiny` | 0 | szybki, ~75MB, słabszy dla języków |
+| `whisper_local` | `small` (default) | 0 | dobry kompromis, ~500MB |
+| `whisper_local` | `medium` | 0 | lepszy, ~1.5GB, wolniejszy na CPU |
+| `whisper_local` | `large-v3` | 0 | najlepszy, ~3GB, potrzebuje GPU/MPS |
+| `openai` | `whisper-1` | $0.006/min | zero setupu, wymaga `OPENAI_API_KEY` |
+
+Model ładuje się lazy (pierwsze nagranie loaduje, potem w pamięci). Faster-whisper używa VAD (`min_silence_duration_ms: 500`) — przytrzymanie PTT z ciszą na końcu nie daje pustego transkryptu.
+
 ## Koszty
 
 Przy 30-50 eventach/dzień:
@@ -175,13 +201,16 @@ voice_inbox/
 ├── adapters/       # per-source polling (Linear, Slack)
 ├── cc/             # Claude Code push handler (via HTTP hooks)
 ├── llm/            # LLMClient protocol + adapters (anthropic, openai_compat)
-├── tts/            # TTSClient protocol + adapters (say, elevenlabs, openai) + worker queue
-├── i18n.py         # PL/EN templates + digest prompts
-├── dedup.py        # SQLite archiwum + cursors
+├── tts/            # TTS adapters (say, elevenlabs, openai) + worker queue
+├── stt/            # STT adapters (whisper_local, openai)
+├── ask.py          # AskHandler — LLM z kontekstu ostatnich eventów
+├── server.py       # FastAPI HTTP server (cc-event / ask / voice / status)
+├── i18n.py         # PL/EN templates + digest/ask prompts
+├── dedup.py        # SQLite archiwum (events z kolumną project)
 ├── summarize.py    # Digest generator
-├── server.py       # FastAPI HTTP server (uruchamiany w wątku)
 ├── config.py
 └── main.py         # orchestrator + digest worker
+public/             # PWA (push-to-talk UI, manifest, ikona)
 tools/
 └── install_cc_hooks.py  # instalator hooków CC w ~/.claude/settings.json
 ```

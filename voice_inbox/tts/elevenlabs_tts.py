@@ -14,7 +14,7 @@ class ElevenLabsTTS:
         self.stability = stability
         self.similarity_boost = similarity_boost
 
-    def speak(self, text: str) -> None:
+    def synthesize(self, text: str) -> tuple[bytes, str]:
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}"
         r = requests.post(
             url,
@@ -35,8 +35,12 @@ class ElevenLabsTTS:
             timeout=60,
         )
         r.raise_for_status()
+        return r.content, "audio/mpeg"
+
+    def speak(self, text: str) -> None:
+        audio, _ = self.synthesize(text)
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            f.write(r.content)
+            f.write(audio)
             path = f.name
         try:
             subprocess.run(["afplay", path], check=False)
