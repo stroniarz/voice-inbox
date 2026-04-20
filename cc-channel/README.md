@@ -93,6 +93,28 @@ a short spoken confirmation. Configured via `channels.archive_replies` in
 - `true` (default) — each reply also archived to DB so it shows up in `/status`
 - `false` — TTS only, ephemeral
 
+## Permission relay (`claude/channel/permission`)
+
+When Claude Code opens a tool-use approval dialog (Bash, Write, Edit…), the
+channel server forwards the prompt to voice-inbox, which announces it over TTS
+and waits for the user's verdict. The verdict goes back to CC and the dialog
+resolves in either direction (local terminal `y/n` still works — whichever
+answer arrives first wins).
+
+TTS announce template (Polish):
+> "Claude w {project} chce uruchomic {tool_name}: {description}. Powiedz 'tak tak tak' aby zaakceptowac, 'nie nie nie' aby odrzucic."
+
+Endpoints:
+- `POST /channels/permissions/request` — channel.ts inserts pending + triggers TTS
+- `GET /channels/permissions/pending[?project=X]` — inspection / PWA banner
+- `POST /channels/permissions/respond {project, behavior, request_id?}` — resolves (oldest pending if no `request_id`)
+- `GET /channels/permissions/poll?project=X&timeout=30` — channel.ts long-polls verdicts
+- `GET /channels/permissions/log?limit=100` — resolved history (for observing response latency)
+
+Config:
+- `channels.archive_permissions` — log request + response to DB (default `true`)
+- `channels.permissions_language` — `pl` or `en` for TTS announce (default `pl`)
+
 ## Environment
 
 - `VOICE_INBOX_URL` — voice-inbox base URL (default `http://127.0.0.1:8765`)

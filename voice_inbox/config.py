@@ -46,6 +46,8 @@ class VoiceConfig:
 @dataclass
 class ChannelsConfig:
     archive_replies: bool = True  # log CC speak() calls to DB for /status visibility
+    archive_permissions: bool = True  # log permission requests + responses (latency observation)
+    permissions_language: str = "pl"  # TTS announce language: pl | en
 
 
 @dataclass
@@ -117,6 +119,8 @@ def load_config(path: Path) -> Config:
     channels_raw = raw.get("channels") or {}
     channels = ChannelsConfig(
         archive_replies=bool(channels_raw.get("archive_replies", True)),
+        archive_permissions=bool(channels_raw.get("archive_permissions", True)),
+        permissions_language=str(channels_raw.get("permissions_language", "pl")),
     )
 
     return Config(

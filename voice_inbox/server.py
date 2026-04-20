@@ -33,13 +33,30 @@ class ChannelReplyBody(BaseModel):
     text: str
 
 
+class PermissionRequestBody(BaseModel):
+    project: str
+    request_id: str
+    tool_name: str
+    description: str
+    input_preview: str = ""
+
+
+class PermissionRespondBody(BaseModel):
+    project: str
+    behavior: str  # "allow" | "deny"
+    request_id: str | None = None
+
+
 def make_app(cc_handler=None, ask_handler=None, store=None,
              stt_client=None, tts_client=None,
              public_dir: Path | None = None,
              stt_language: str = "pl",
              channels_bridge=None,
              tts_worker=None,
-             archive_replies: bool = True) -> FastAPI:
+             archive_replies: bool = True,
+             permissions_broker=None,
+             archive_permissions: bool = True,
+             permissions_language: str = "pl") -> FastAPI:
     app = FastAPI(title="voice-inbox")
 
     @app.get("/health")
@@ -168,6 +185,92 @@ def make_app(cc_handler=None, ask_handler=None, store=None,
             except Exception as e:
                 logger.exception("archive_event failed: %s", e)
         return {"ok": True, "spoken": spoken, "archived": archived}
+
+    @app.post("/channels/permissions/request")
+    async def permissions_request(body: PermissionRequestBody):
+        if permissions_broker is None:
+            return JSONResponse({"ok": False, "error": "permissions disabled"}, status_code=503)
+        await permissions_broker.store_request(
+            project=body.project,
+            request_id=body.request_id,
+            tool_name=body.tool_name,
+            description=body.description,
+            input_preview=body.input_preview,
+        )
+        if tts_worker is not None:
+            from .channels_permissions import announce_template
+            announce = announce_template(
+                project=body.project, tool_name=body.tool_name,
+                description=body.description, language=permissions_language,
+            )
+            try:
+                tts_worker.enqueue(announce, tag="critical")
+            except Exception as e:
+                logger.exception("permissions TTS enqueue failed: %s", e)
+        if archive_permissions and store is not None:
+            try:
+                store.archive_event(
+                    source="cc-permission-request",
+                    external_id=f"perm-req:{body.project}:{body.request_id}",
+                    author=body.project,
+                    short=f"{body.tool_name}: {body.description[:40]}",
+                    title=body.tool_name,
+                    body=body.description + ("\n" + body.input_preview if body.input_preview else ""),
+                    project=body.project,
+                )
+            except Exception as e:
+                logger.exception("permissions archive failed: %s", e)
+        return {"ok": True}
+
+    @app.get("/channels/permissions/pending")
+    def permissions_pending(project: str | None = None):
+        if permissions_broker is None:
+            return JSONResponse({"ok": False, "error": "permissions disabled"}, status_code=503)
+        return {"ok": True, "pending": permissions_broker.list_pending(project=project)}
+
+    @app.post("/channels/permissions/respond")
+    async def permissions_respond(body: PermissionRespondBody):
+        if permissions_broker is None:
+            return JSONResponse({"ok": False, "error": "permissions disabled"}, status_code=503)
+        if body.behavior not in ("allow", "deny"):
+            return JSONResponse({"ok": False, "error": "behavior must be allow|deny"}, status_code=400)
+        resolved = await permissions_broker.respond(
+            project=body.project, behavior=body.behavior, request_id=body.request_id,
+        )
+        if resolved is None:
+            return JSONResponse({"ok": False, "error": "no matching pending request"}, status_code=404)
+        if archive_permissions and store is not None:
+            try:
+                latency = round(resolved["resolved_ts"] - resolved["created_ts"], 2)
+                store.archive_event(
+                    source="cc-permission-response",
+                    external_id=f"perm-res:{resolved['project']}:{resolved['request_id']}",
+                    author=resolved["project"],
+                    short=f"{body.behavior} {resolved['tool_name']} ({latency}s)",
+                    title=body.behavior,
+                    body=f"tool={resolved['tool_name']} latency={latency}s",
+                    project=resolved["project"],
+                )
+            except Exception as e:
+                logger.exception("permissions response archive failed: %s", e)
+        return {"ok": True, "resolved": resolved}
+
+    @app.get("/channels/permissions/poll")
+    async def permissions_poll(project: str, timeout: float = 30.0):
+        if permissions_broker is None:
+            return JSONResponse({"ok": False, "error": "permissions disabled"}, status_code=503)
+        timeout = max(0.1, min(timeout, 60.0))
+        verdict = await permissions_broker.pull_verdict(project, timeout=timeout)
+        if verdict is None:
+            return Response(status_code=204)
+        return {"ok": True, "verdict": verdict}
+
+    @app.get("/channels/permissions/log")
+    def permissions_log(limit: int = 100):
+        if permissions_broker is None:
+            return JSONResponse({"ok": False, "error": "permissions disabled"}, status_code=503)
+        limit = max(1, min(limit, 500))
+        return {"ok": True, "history": permissions_broker.history(limit=limit)}
 
     @app.get("/status")
     def status(hours: int = 24):

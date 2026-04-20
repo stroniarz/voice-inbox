@@ -3,6 +3,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { basename } from "node:path";
+import { z } from "zod";
 
 const VOICE_INBOX_URL = (process.env.VOICE_INBOX_URL ?? "http://127.0.0.1:8765").replace(/\/$/, "");
 const PROJECT = process.env.VOICE_INBOX_CHANNEL_PROJECT ?? (basename(process.cwd()) || "default");
@@ -11,7 +12,6 @@ const HEARTBEAT_INTERVAL_MS = 10_000;
 const ERROR_BACKOFF_MS = 2_000;
 
 function log(msg: string, extra?: unknown) {
-  // stdio is reserved for MCP JSON-RPC; all diagnostics go to stderr
   if (extra !== undefined) {
     process.stderr.write(`[cc-channel:${PROJECT}] ${msg} ${JSON.stringify(extra)}\n`);
   } else {
@@ -20,11 +20,14 @@ function log(msg: string, extra?: unknown) {
 }
 
 const mcp = new Server(
-  { name: "voice-inbox", version: "0.2.0" },
+  { name: "voice-inbox", version: "0.3.0" },
   {
     capabilities: {
-      experimental: { "claude/channel": {} },
-      tools: {},  // phase 3: expose `speak` so CC can reply through voice-inbox TTS
+      experimental: {
+        "claude/channel": {},
+        "claude/channel/permission": {},  // phase 4: relay tool-use approvals
+      },
+      tools: {},
     },
     instructions:
       'Events from the voice-inbox channel arrive as <channel source="voice-inbox" ...>. ' +
@@ -32,11 +35,11 @@ const mcp = new Server(
       "Treat them as direct user input. " +
       "When the reply is short and conversational (1-2 sentences, a confirmation, a summary), call the `speak` tool " +
       "with that text so the user hears it without looking at the terminal. " +
-      "Skip `speak` for long outputs, file contents, code, or when the user is clearly at the terminal " +
-      "(they can read the transcript themselves).",
+      "Skip `speak` for long outputs, file contents, code, or when the user is clearly at the terminal.",
   },
 );
 
+// --- speak tool (phase 3) ----------------------------------------------------
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
@@ -84,9 +87,38 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   throw new Error(`unknown tool: ${req.params.name}`);
 });
 
-await mcp.connect(new StdioServerTransport());
-log(`connected to Claude Code; bridging ${VOICE_INBOX_URL} (project=${PROJECT})`);
+// --- permission relay (phase 4) ---------------------------------------------
+const PermissionRequestSchema = z.object({
+  method: z.literal("notifications/claude/channel/permission_request"),
+  params: z.object({
+    request_id: z.string(),
+    tool_name: z.string(),
+    description: z.string(),
+    input_preview: z.string(),
+  }),
+});
 
+mcp.setNotificationHandler(PermissionRequestSchema, async ({ params }) => {
+  log("permission request received", { request_id: params.request_id, tool: params.tool_name });
+  try {
+    const res = await fetch(`${VOICE_INBOX_URL}/channels/permissions/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project: PROJECT, ...params }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      log(`permission forward failed: HTTP ${res.status} ${detail}`);
+    }
+  } catch (err) {
+    log("permission forward error", String(err));
+  }
+});
+
+await mcp.connect(new StdioServerTransport());
+log(`connected; bridging ${VOICE_INBOX_URL} (project=${PROJECT})`);
+
+// --- registration heartbeat -------------------------------------------------
 async function register() {
   try {
     const res = await fetch(`${VOICE_INBOX_URL}/channels/register`, {
@@ -94,18 +126,16 @@ async function register() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ project: PROJECT, cwd: process.cwd() }),
     });
-    if (!res.ok) {
-      log(`register failed: HTTP ${res.status}`);
-    }
+    if (!res.ok) log(`register failed: HTTP ${res.status}`);
   } catch (err) {
     log("register error", String(err));
   }
 }
-
 await register();
 setInterval(register, HEARTBEAT_INTERVAL_MS);
 
-async function pullOnce(): Promise<void> {
+// --- pull loop: inbound channel messages ------------------------------------
+async function pullMessages(): Promise<void> {
   const url = `${VOICE_INBOX_URL}/channels/pull?project=${encodeURIComponent(PROJECT)}&timeout=${PULL_TIMEOUT_SECONDS}`;
   try {
     const res = await fetch(url);
@@ -119,10 +149,7 @@ async function pullOnce(): Promise<void> {
     if (!body.message) return;
     await mcp.notification({
       method: "notifications/claude/channel",
-      params: {
-        content: body.message.text,
-        meta: body.message.meta ?? {},
-      },
+      params: { content: body.message.text, meta: body.message.meta ?? {} },
     });
   } catch (err) {
     log("pull error", String(err));
@@ -130,6 +157,30 @@ async function pullOnce(): Promise<void> {
   }
 }
 
-while (true) {
-  await pullOnce();
+// --- pull loop: permission verdicts -----------------------------------------
+async function pullVerdicts(): Promise<void> {
+  const url = `${VOICE_INBOX_URL}/channels/permissions/poll?project=${encodeURIComponent(PROJECT)}&timeout=${PULL_TIMEOUT_SECONDS}`;
+  try {
+    const res = await fetch(url);
+    if (res.status === 204) return;
+    if (!res.ok) {
+      log(`verdict poll HTTP ${res.status}`);
+      await Bun.sleep(ERROR_BACKOFF_MS);
+      return;
+    }
+    const body = (await res.json()) as { ok: boolean; verdict?: { request_id: string; behavior: "allow" | "deny" } };
+    if (!body.verdict) return;
+    await mcp.notification({
+      method: "notifications/claude/channel/permission",
+      params: { request_id: body.verdict.request_id, behavior: body.verdict.behavior },
+    });
+    log(`verdict delivered`, body.verdict);
+  } catch (err) {
+    log("verdict poll error", String(err));
+    await Bun.sleep(ERROR_BACKOFF_MS);
+  }
 }
+
+// run both loops concurrently — one per kind
+(async () => { while (true) await pullMessages(); })();
+(async () => { while (true) await pullVerdicts(); })();

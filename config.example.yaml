@@ -111,7 +111,9 @@ voice:
 # Endpointy są zawsze aktywne gdy server.enabled=true. Ta sekcja konfiguruje
 # tylko zachowanie — czy CC's speak() tool nagrywać do DB (widoczne w /status).
 channels:
-  archive_replies: true  # log każdy speak() CC-ka do DB; off = tylko ulotny TTS
+  archive_replies: true      # log każdy speak() CC-ka do DB; off = tylko ulotny TTS
+  archive_permissions: true  # log permission requests + responses (latency observation → informed TTL decision later)
+  permissions_language: pl   # język TTS announce permission prompta: pl | en
 
 sources:
   linear:

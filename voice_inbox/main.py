@@ -17,6 +17,7 @@ from .adapters.slack import SlackAdapter
 from .cc import CCHandler, TranscriptSummarizer
 from .ask import AskHandler
 from .channels_bridge import ChannelsBridge
+from .channels_permissions import PermissionsBroker
 from .server import make_app, serve_in_thread
 from .stt import make_stt
 
@@ -157,10 +158,12 @@ def run(config_path: Path) -> None:
         tts_for_voice = clients.get("default")
 
         channels_bridge = ChannelsBridge()
+        permissions_broker = PermissionsBroker()
         logging.info(
-            "Channels bridge enabled (/channels/{register,push,pull,active,reply}); "
-            "archive_replies=%s",
+            "Channels bridge + permissions enabled; archive_replies=%s archive_permissions=%s lang=%s",
             cfg.channels.archive_replies,
+            cfg.channels.archive_permissions,
+            cfg.channels.permissions_language,
         )
 
         app = make_app(
@@ -174,6 +177,9 @@ def run(config_path: Path) -> None:
             channels_bridge=channels_bridge,
             tts_worker=tts_worker,
             archive_replies=cfg.channels.archive_replies,
+            permissions_broker=permissions_broker,
+            archive_permissions=cfg.channels.archive_permissions,
+            permissions_language=cfg.channels.permissions_language,
         )
         serve_in_thread(app, cfg.server.host, cfg.server.port)
         logging.info("HTTP server: http://%s:%d", cfg.server.host, cfg.server.port)
