@@ -6,6 +6,10 @@ MESSAGES = {
         "linear_comment": "komentarz do: {title}",
         "slack_dm": "wiadomość prywatna",
         "slack_mention": "wzmianka na {channel}",
+        "cc_stop": "Claude Code, sesja w {project} zakończona",
+        "cc_subagent_stop": "Claude Code, subagent w {project} zakończony",
+        "cc_notification": "Claude Code w {project}: {message}",
+        "cc_long_done": "Claude Code skończył długie zadanie w {project}",
         "digest_system": """Jesteś asystentem audio. Użytkownik już SŁYSZAŁ każdy event w live (krótkie komunikaty: "nowe zadanie X", "komentarz na Y"). NIE powtarzaj tego.
 
 Twoim zadaniem jest zrobić META-podsumowanie z lotu ptaka — jakie wzorce widać, gdzie była największa aktywność, co jest pilne, co wymaga akcji. NIE streszczaj każdego eventu po kolei.
@@ -26,6 +30,10 @@ Zasady:
         "linear_comment": "new comment on {title}",
         "slack_dm": "direct message",
         "slack_mention": "mention in {channel}",
+        "cc_stop": "Claude Code, session in {project} ended",
+        "cc_subagent_stop": "Claude Code, subagent in {project} finished",
+        "cc_notification": "Claude Code in {project}: {message}",
+        "cc_long_done": "Claude Code finished a long task in {project}",
         "digest_system": """You are an audio assistant. The user already HEARD each event live (short notifications: "new task X", "comment on Y"). DO NOT repeat them.
 
 Your job is a META-summary from a bird's-eye view — what patterns emerged, where activity concentrated, what's urgent, what needs action. DO NOT summarize each event one by one.

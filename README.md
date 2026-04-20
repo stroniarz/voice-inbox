@@ -99,6 +99,44 @@ llm: {provider: ollama, model: gemma3:27b}
 
 User token (`xoxp-...`) z: `im:history, im:read, users:read, search:read, channels:history, groups:history, mpim:history`. Monitoruje DMs + @mentions.
 
+## Source: Claude Code (push-based)
+
+Voice Inbox czyta głosem eventy z każdej sesji Claude Code w dowolnym projekcie — bez polling, bez per-repo konfiguracji. Globalny hook w `~/.claude/settings.json` POSTuje każdy event do lokalnego serwera voice-inbox.
+
+**Setup:**
+
+1. Włącz w `config.yaml`:
+
+    ```yaml
+    server:
+      enabled: true
+      port: 8765
+    claude_code:
+      enabled: true
+      stop_min_duration_seconds: 30  # krótsze sesje Stop są ignorowane
+      cooldown_seconds: 60           # minimum między ogłoszeniami tego samego typu
+    ```
+
+2. Zainstaluj hooki globalnie (raz):
+
+    ```bash
+    python3 tools/install_cc_hooks.py
+    # lub: python3 tools/install_cc_hooks.py --port 8765
+    ```
+
+3. Uruchom voice-inbox jak zwykle. Teraz każda sesja CC (w dowolnym repo) emituje:
+   - **Stop** → "Claude Code, sesja w {projekt} zakończona" (jeśli trwała >30s)
+   - **SubagentStop** → "Claude Code, subagent w {projekt} zakończony"
+   - **Notification** → "Claude Code w {projekt}: {message}" (`critical` tag, ekspresyjniejszy ton — bo oznacza że agent czeka na Ciebie)
+
+**Odinstalowanie:**
+
+```bash
+python3 tools/install_cc_hooks.py --remove
+```
+
+Tworzy `.bak` na wszelki wypadek.
+
 ## Koszty
 
 Przy 30-50 eventach/dzień:
@@ -116,13 +154,17 @@ Przy 30-50 eventach/dzień:
 ```
 voice_inbox/
 ├── adapters/       # per-source polling (Linear, Slack)
+├── cc/             # Claude Code push handler (via HTTP hooks)
 ├── llm/            # LLMClient protocol + adapters (anthropic, openai_compat)
 ├── tts/            # TTSClient protocol + adapters (say, elevenlabs, openai) + worker queue
 ├── i18n.py         # PL/EN templates + digest prompts
 ├── dedup.py        # SQLite archiwum + cursors
 ├── summarize.py    # Digest generator
+├── server.py       # FastAPI HTTP server (uruchamiany w wątku)
 ├── config.py
 └── main.py         # orchestrator + digest worker
+tools/
+└── install_cc_hooks.py  # instalator hooków CC w ~/.claude/settings.json
 ```
 
 ## Rozszerzanie

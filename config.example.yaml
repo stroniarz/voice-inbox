@@ -56,6 +56,22 @@ tts:
 state:
   db_path: ~/.voice-inbox/state.db
 
+# ── HTTP server (dla push-based adapterów jak Claude Code) ─────────────
+server:
+  enabled: false
+  host: 127.0.0.1  # tylko lokalnie; dla Tailscale: 0.0.0.0
+  port: 8765
+
+# ── Claude Code integration ────────────────────────────────────────────
+# Wymaga server.enabled=true. Po włączeniu uruchom:
+#   python -m voice_inbox.tools.install_cc_hooks
+# aby wgrać hooki do ~/.claude/settings.json
+claude_code:
+  enabled: false
+  stop_min_duration_seconds: 30  # Stop eventy krótszych sesji są ignorowane
+  cooldown_seconds: 60  # minimum między ogłoszeniami tego samego typu w tym samym projekcie
+  ignore_events: []  # np. ["SubagentStop"] żeby wyciszyć subagenty
+
 sources:
   linear:
     enabled: true

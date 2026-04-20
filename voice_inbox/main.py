@@ -14,6 +14,8 @@ from .tts import make_tts
 from .tts.worker import TTSWorker
 from .adapters.linear import LinearAdapter
 from .adapters.slack import SlackAdapter
+from .cc import CCHandler
+from .server import make_app, serve_in_thread
 
 
 ADAPTERS = {
@@ -102,8 +104,25 @@ def run(config_path: Path) -> None:
     logging.info("Language: %s", cfg.language)
     adapters = build_adapters(cfg, store)
 
-    if not adapters:
-        logging.error("No adapters enabled. Exiting.")
+    if cfg.server.enabled:
+        cc_handler = None
+        if cfg.cc.enabled:
+            cc_handler = CCHandler(
+                store, tts_worker, language=cfg.language,
+                stop_min_duration_seconds=cfg.cc.stop_min_duration_seconds,
+                cooldown_seconds=cfg.cc.cooldown_seconds,
+                ignore_events=cfg.cc.ignore_events,
+            )
+            logging.info("Claude Code adapter enabled (cooldown=%ss)",
+                         cfg.cc.cooldown_seconds)
+        else:
+            cc_handler = lambda _payload: None
+        app = make_app(cc_handler)
+        serve_in_thread(app, cfg.server.host, cfg.server.port)
+        logging.info("HTTP server: http://%s:%d", cfg.server.host, cfg.server.port)
+
+    if not adapters and not cfg.cc.enabled:
+        logging.error("No adapters or push receivers enabled. Exiting.")
         sys.exit(1)
 
     stop = {"flag": False}
