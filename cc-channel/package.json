@@ -1,0 +1,19 @@
+{
+  "name": "voice-inbox-cc-channel",
+  "module": "channel.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun channel.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}

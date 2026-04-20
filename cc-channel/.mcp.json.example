@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "voice-inbox": {
+      "command": "bun",
+      "args": ["/ABSOLUTE/PATH/TO/voice-inbox/cc-channel/channel.ts"]
+    }
+  }
+}
